@@ -104,8 +104,7 @@ HIDDEN void jmap_email_filtercondition_parse(struct jmap_parser *parser,
             }
         }
         else if (!strcmp(field, "before") ||
-                 !strcmp(field, "after") ||
-                 !strcmp(field, "destroyedAfter")) {
+                 !strcmp(field, "after")) {
             if (!json_is_utcdate(arg)) {
                 jmap_parser_invalid(parser, field);
             }
@@ -192,6 +191,12 @@ HIDDEN void jmap_email_filtercondition_parse(struct jmap_parser *parser,
                   !strcmp(field, "ccContactGroupId") ||
                   !strcmp(field, "bccContactGroupId"))) {
             if (!json_is_string(arg)) {
+                jmap_parser_invalid(parser, field);
+            }
+        }
+        else if (!strcmp(field, "destroyedAfter") &&
+                 strarray_find(capabilities, JMAP_MAIL_EXTENSION, 0) >= 0) {
+            if (!json_is_utcdate(arg)) {
                 jmap_parser_invalid(parser, field);
             }
         }
