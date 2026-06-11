@@ -4842,6 +4842,21 @@ done:
     return r;
 }
 
+/* Copy the originating client's User-Agent from the underlying HTTP request
+ * into the synthetic transaction we hand to caldav_store_resource(), so the
+ * stored event message records which client wrote this version.  The CalDAV
+ * PUT path gets this for free from txn->req_hdrs; the JMAP path builds its own
+ * empty hdrcache, so we plumb it through here. -- claude, 2026-06-11 */
+static void jmap_set_event_user_agent(jmap_req_t *req, struct transaction_t *txn)
+{
+    const char **hdr;
+
+    if (req->txn && req->txn->req_hdrs &&
+        (hdr = spool_getheader(req->txn->req_hdrs, "User-Agent"))) {
+        spool_cache_header(xstrdup("User-Agent"), xstrdup(hdr[0]), txn->req_hdrs);
+    }
+}
+
 static int createevent_store(jmap_req_t *req,
                              struct jmap_parser *parser,
                              struct createevent *create,
@@ -4855,6 +4870,7 @@ static int createevent_store(jmap_req_t *req,
         .userid = req->userid,
         .authstate = req->authstate
     };
+    jmap_set_event_user_agent(req, &txn);
     int r = 0;
 
     static int64_t icalendar_max_size = -1;
@@ -6118,6 +6134,7 @@ static void setcalendarevents_update(jmap_req_t *req,
         .userid = req->userid,
         .authstate = req->authstate
     };
+    jmap_set_event_user_agent(req, &txn);
     r = proxy_mlookup(mailbox_name(mbox), &txn.req_tgt.mbentry, NULL, NULL);
     if (r) {
         syslog(LOG_ERR, "mlookup(%s) failed: %s", mailbox_name(mbox), error_message(r));
@@ -6459,6 +6476,7 @@ static int setcalendarevents_destroy(jmap_req_t *req,
             .userid = req->userid,
             .authstate = req->authstate
         };
+        jmap_set_event_user_agent(req, &txn);
         r = caldav_store_resource(&txn, newical, mbox,
                 resource, record.createdmodseq, db, PERMS_NOKEEP, req->userid,
                 NULL, NULL, &schedule_addresses);
