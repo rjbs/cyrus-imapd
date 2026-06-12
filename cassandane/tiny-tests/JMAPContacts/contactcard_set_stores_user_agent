@@ -1,0 +1,32 @@
+#!perl
+use Cassandane::Tiny;
+
+# CardDAV records the writing client's HTTP User-Agent in the stored card
+# message; ContactCard/set should do the same by passing the JMAP request's
+# User-Agent through to carddav_store. -- claude, 2026-06-12
+sub test_contactcard_set_stores_user_agent
+    :min_version_3_9
+    :MagicPlus
+    ($self)
+{
+    my $user = $self->default_user;
+    my $jmap = $user->jmap;
+
+    my $agent = 'Cassandane-JMAP-Client/9.9';
+    $jmap->ua->lwp->agent($agent);
+
+    xlog $self, "create a card via ContactCard/set";
+    my $res = $jmap->CallMethods([
+        ['ContactCard/set', { create => { c1 => {
+            '@type' => 'Card',
+            version => '1.0',
+            name => { full => "Test Card" },
+            uid => 'ae2640cc-234a-4dd9-95cc-3106258445b9',
+        }}}, "R1"],
+    ]);
+    $self->assert_not_null($res->[0][1]{created}{c1});
+
+    xlog $self, "the stored card message carries the JMAP client's User-Agent";
+    my $raw = $self->_fetch_dav_message($user, qr{#addressbooks.*Default}i);
+    $self->assert_matches(qr/^User-Agent:\s*\Q$agent\E\s*$/im, $raw);
+}

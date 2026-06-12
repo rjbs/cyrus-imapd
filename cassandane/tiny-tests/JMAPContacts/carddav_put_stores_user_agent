@@ -1,0 +1,34 @@
+#!perl
+use Cassandane::Tiny;
+
+# The CardDAV PUT path records the writing client's HTTP User-Agent in the
+# stored card message; this is the behaviour that ContactCard/set was taught
+# to mirror, so we assert it here as the companion case. -- claude, 2026-06-12
+sub test_carddav_put_stores_user_agent
+    :min_version_3_9
+    :MagicPlus
+    ($self)
+{
+    my $carddav = $self->{carddav};
+
+    my $agent = 'Cassandane-CardDAV-Client/9.9';
+    my $uuid = '0e1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d';
+    my $href = "Default/$uuid.vcf";
+    my $card = <<EOF;
+BEGIN:VCARD
+VERSION:3.0
+UID:$uuid
+N:Card;Test;;;
+FN:Test Card
+END:VCARD
+EOF
+
+    xlog $self, "PUT a card with a known User-Agent";
+    $carddav->Request('PUT', $href, $card,
+        'Content-Type' => 'text/vcard',
+        'User-Agent' => $agent);
+
+    xlog $self, "the stored card message carries the CardDAV client's User-Agent";
+    my $raw = $self->_fetch_dav_message($self->default_user, qr{#addressbooks.*Default}i);
+    $self->assert_matches(qr/^User-Agent:\s*\Q$agent\E\s*$/im, $raw);
+}
