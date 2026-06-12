@@ -512,29 +512,6 @@ EOF
     $self->{instance}->deliver(Cassandane::Message->new(raw => $imip));
 };
 
-# Return the raw RFC 5322 source of the message stored in the first DAV mailbox
-# whose name matches $folder_re.  DAV mailboxes aren't selectable over ordinary
-# IMAP, so we log in with the "+dav" magic plus. -- claude, 2026-06-11
-sub _fetch_dav_message
-{
-    my ($self, $user, $folder_re) = @_;
-
-    my $svc = $self->{instance}->get_service('imap');
-    my $store = $svc->create_store(username => $user->username . '+dav');
-    my $imap = $store->get_client;
-
-    my $folders = $imap->list('', '*');
-    my ($folder) = map { $_->[2] } grep { $_->[2] =~ $folder_re } @$folders;
-    $self->assert_not_null($folder);
-
-    $imap->select($folder);
-    my $res = $imap->fetch('1:*', 'rfc822');
-    my ($msg) = values %$res;
-    $self->assert_not_null($msg);
-
-    return $msg->{rfc822};
-}
-
 use Cassandane::Tiny::Loader;
 
 1;
