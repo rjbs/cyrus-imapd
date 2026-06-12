@@ -942,11 +942,11 @@ sub default_user
     return $self->{default_user};
 }
 
-# Return the raw RFC 5322 source of the message stored in the first DAV mailbox
-# whose name matches $folder_re.  DAV mailboxes aren't selectable over ordinary
-# IMAP, so we log in with the "+dav" magic plus; the calling test must be tagged
-# :MagicPlus. -- claude, 2026-06-11
-sub _fetch_dav_message
+# Return the raw RFC 5322 source of every message stored in the first DAV
+# mailbox whose name matches $folder_re, in sequence-number order.  DAV
+# mailboxes aren't selectable over ordinary IMAP, so we log in with the "+dav"
+# magic plus; the calling test must be tagged :MagicPlus. -- claude, 2026-06-12
+sub _fetch_dav_messages
 {
     my ($self, $user, $folder_re) = @_;
 
@@ -960,10 +960,19 @@ sub _fetch_dav_message
 
     $imap->select($folder);
     my $res = $imap->fetch('1:*', 'rfc822');
-    my ($msg) = values %$res;
+
+    return map { $res->{$_}{rfc822} } sort { $a <=> $b } keys %$res;
+}
+
+# As above, but for the single message expected in the matching mailbox.
+sub _fetch_dav_message
+{
+    my ($self, $user, $folder_re) = @_;
+
+    my ($msg) = $self->_fetch_dav_messages($user, $folder_re);
     $self->assert_not_null($msg);
 
-    return $msg->{rfc822};
+    return $msg;
 }
 
 sub _start_instances
