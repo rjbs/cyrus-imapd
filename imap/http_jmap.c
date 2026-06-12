@@ -1422,6 +1422,73 @@ static void ws_push_enable(struct transaction_t *txn, json_t *req)
  *   https://www.chromestatus.com/feature/6251293127475200
  *   (using --enable-experimental-web-platform-features)
  */
+/* HTTP headers a WS client may override per-request via "forwardedHeaders".
+ * A single long-lived WS connection can be shared by a proxy fanning many
+ * distinct remote clients onto it, so the handshake headers don't describe the
+ * effective client of an individual request.  Only these names are honoured,
+ * so a client can't smuggle sensitive headers (Authorization, Host, ...) into
+ * req_hdrs.  Extend this list as more forwarded headers gain a consumer.
+ * -- claude, 2026-06-12 */
+static const char *ws_forwardable_headers[] = {
+    "User-Agent",
+    NULL
+};
+
+/* A forwarded value comes from the JSON frame, so it's untrusted text; reject
+ * control characters (notably CR/LF) so it can't inject extra header lines when
+ * written into req_hdrs and later into stored DAV messages. -- claude,
+ * 2026-06-12 */
+static int ws_forwarded_value_ok(const char *val)
+{
+    const char *p;
+
+    for (p = val; *p; p++) {
+        if ((unsigned char) *p < 0x20 || (unsigned char) *p == 0x7f) return 0;
+    }
+
+    return 1;
+}
+
+/* Apply the allow-listed headers forwarded in a WS request frame to req_hdrs
+ * for the duration of one request, remembering the connection's originals in
+ * 'names'/'origs' so ws_restore_forwarded_headers() can put them back.  An
+ * original of NULL in 'origs' means the header was absent on the connection. */
+static void ws_apply_forwarded_headers(struct transaction_t *txn, json_t *req,
+                                       strarray_t *names, ptrarray_t *origs)
+{
+    json_t *jfwd = json_object_get(req, "forwardedHeaders");
+    if (!json_is_object(jfwd)) return;
+
+    const char **name;
+    for (name = ws_forwardable_headers; *name; name++) {
+        const char *val = json_string_value(json_object_get(jfwd, *name));
+        if (!val || !ws_forwarded_value_ok(val)) continue;
+
+        const char **orig = spool_getheader(txn->req_hdrs, *name);
+        strarray_append(names, *name);
+        ptrarray_append(origs, orig ? xstrdup(orig[0]) : NULL);
+
+        spool_replace_header(xstrdup(*name), xstrdup(val), txn->req_hdrs);
+    }
+}
+
+static void ws_restore_forwarded_headers(struct transaction_t *txn,
+                                         strarray_t *names, ptrarray_t *origs)
+{
+    int i;
+
+    for (i = 0; i < strarray_size(names); i++) {
+        const char *name = strarray_nth(names, i);
+        char *orig = ptrarray_nth(origs, i);
+
+        if (orig) spool_replace_header(xstrdup(name), orig, txn->req_hdrs);
+        else spool_remove_header(name, txn->req_hdrs);
+    }
+
+    strarray_fini(names);
+    ptrarray_fini(origs);
+}
+
 static int jmap_ws(struct transaction_t *txn, enum wslay_opcode opcode,
                    struct buf *inbuf, struct buf *outbuf, struct buf *logbuf)
 {
@@ -1456,8 +1523,18 @@ static int jmap_ws(struct transaction_t *txn, enum wslay_opcode opcode,
         const char *type = json_string_value(json_object_get(req, "@type"));
 
         if (!strcmpsafe(type, "Request")) {
+            /* Honour any per-request headers the client forwarded in this
+             * frame (e.g. the effective User-Agent when a proxy multiplexes
+             * many remote clients onto one connection), then restore the
+             * connection's own headers afterwards. -- claude, 2026-06-12 */
+            strarray_t fwd_names = STRARRAY_INITIALIZER;
+            ptrarray_t fwd_origs = PTRARRAY_INITIALIZER;
+            ws_apply_forwarded_headers(txn, req, &fwd_names, &fwd_origs);
+
             /* Process the API request */
             ret = jmap_api(txn, req, &res, &my_jmap_settings);
+
+            ws_restore_forwarded_headers(txn, &fwd_names, &fwd_origs);
         }
         else if (jmap_push_poll && !strcmpsafe(type, "WebSocketPushEnable")) {
             /* Log request */
