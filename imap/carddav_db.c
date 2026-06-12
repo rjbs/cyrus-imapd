@@ -1119,6 +1119,7 @@ EXPORTED int carddav_store(struct mailbox *mailbox, vcardcomponent *vcard,
                            const char *resource, modseq_t createdmodseq,
                            struct entryattlist **annots,
                            const char *userid, struct auth_state *authstate,
+                           const char *useragent,
                            int ignorequota, uint32_t oldsize)
 {
     int r = 0;
@@ -1171,6 +1172,12 @@ EXPORTED int carddav_store(struct mailbox *mailbox, vcardcomponent *vcard,
     mbuserid = mboxname_to_userid(mailbox_name(mailbox));
 
     time_to_rfc5322(now.tv_sec, datestr, sizeof(datestr));
+
+    /* Record the writing client's User-Agent, as the CardDAV PUT path does via
+     * dav_store_resource(). -- claude, 2026-06-12 */
+    if (useragent) {
+        fprintf(f, "User-Agent: %s\r\n", useragent);
+    }
 
     /* XXX  This needs to be done via an LDAP/DB lookup */
     header = charset_encode_addrheader(mbuserid, 0, 0);

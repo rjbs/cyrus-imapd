@@ -178,6 +178,7 @@ int carddav_store(struct mailbox *mailbox, vcardcomponent *vcard,
                     const char *resource, modseq_t createdmodseq,
                     struct entryattlist **annots,
                     const char *userid, struct auth_state *authstate,
+                    const char *useragent,
                     int ignorequota, uint32_t oldsize);
 
 /* delete a carddav entry */

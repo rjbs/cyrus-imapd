@@ -9012,6 +9012,22 @@ static int _jscard_to_vcard(struct jmap_req *req,
     return r;
 }
 
+/* The User-Agent of the client making this JMAP request, taken from the
+ * underlying HTTP request, so carddav_store() can record which client wrote
+ * this version of the card, as the CardDAV PUT path does. -- claude,
+ * 2026-06-12 */
+static const char *_jmap_req_user_agent(jmap_req_t *req)
+{
+    const char **hdr;
+
+    if (req->txn && req->txn->req_hdrs &&
+        (hdr = spool_getheader(req->txn->req_hdrs, "User-Agent"))) {
+        return hdr[0];
+    }
+
+    return NULL;
+}
+
 static int _card_set_create(jmap_req_t *req,
                             json_t *jcard, struct mailbox **mailbox,
                             json_t *item, jmap_contact_errors_t *errors)
@@ -9216,7 +9232,8 @@ static int _card_set_create(jmap_req_t *req,
     modseq_t cmodseq =
         mboxname_nextmodseq(mbentry->name, 0, MBTYPE_ADDRESSBOOK, 0);
     r = carddav_store(*mailbox, card, resourcename, cmodseq, &annots,
-                      req->userid, req->authstate, ignorequota, /*oldsize*/ 0);
+                      req->userid, req->authstate, _jmap_req_user_agent(req),
+                      ignorequota, /*oldsize*/ 0);
     if (r && r != HTTP_CREATED && r != HTTP_NO_CONTENT) {
         syslog(LOG_ERR, "carddav_store failed for user %s: %s",
                req->userid, error_message(r));
@@ -9593,7 +9610,7 @@ static int _card_set_update(jmap_req_t *req, bool apply_empty_updates,
                req->accountid, resource);
         r = carddav_store(this_mailbox, vcard, resource,
                           record.createdmodseq, &annots, req->userid,
-                          req->authstate, ignorequota,
+                          req->authstate, _jmap_req_user_agent(req), ignorequota,
                           (record.size - record.header_size));
         if (!r) {
             struct index_record record;
