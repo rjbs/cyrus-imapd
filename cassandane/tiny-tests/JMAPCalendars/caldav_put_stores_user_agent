@@ -1,0 +1,40 @@
+#!perl
+use Cassandane::Tiny;
+
+# The CalDAV PUT path records the writing client's HTTP User-Agent in the
+# stored event message; this is the behaviour that CalendarEvent/set was
+# taught to mirror, so we assert it here as the companion case. -- claude,
+# 2026-06-11
+sub test_caldav_put_stores_user_agent
+    :min_version_3_9
+    :MagicPlus
+    ($self)
+{
+    my $caldav = $self->{caldav};
+
+    my $agent = 'Cassandane-CalDAV-Client/9.9';
+    my $uuid = '0e1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d';
+    my $href = "Default/$uuid.ics";
+    my $event = <<EOF;
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Cassandane//EN
+BEGIN:VEVENT
+UID:$uuid
+DTSTART:20260611T090000Z
+DURATION:PT1H
+DTSTAMP:20260611T000000Z
+SUMMARY:an event
+END:VEVENT
+END:VCALENDAR
+EOF
+
+    xlog $self, "PUT an event with a known User-Agent";
+    $caldav->Request('PUT', $href, $event,
+        'Content-Type' => 'text/calendar',
+        'User-Agent' => $agent);
+
+    xlog $self, "the stored event message carries the CalDAV client's User-Agent";
+    my $raw = $self->_fetch_dav_message($self->default_user, qr{#calendars.*Default}i);
+    $self->assert_matches(qr/^User-Agent:\s*\Q$agent\E\s*$/im, $raw);
+}
