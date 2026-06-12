@@ -1,0 +1,39 @@
+#!perl
+use Cassandane::Tiny;
+
+# Over WebSocket a single connection may be shared by a proxy fanning many
+# distinct remote clients onto it, so the effective User-Agent is forwarded
+# per-frame in "forwardedHeaders" rather than taken from the handshake.
+# -- claude, 2026-06-12
+sub test_contactcard_set_forwarded_user_agent
+    :min_version_3_9
+    :MagicPlus
+    ($self)
+{
+    my $user = $self->default_user;
+    my $jmap_ws = $user->jmap_ws;
+
+    my $agent = 'Forwarded-Client/9.9';
+
+    xlog $self, "create a card over WebSocket, forwarding a User-Agent";
+    my $res = $jmap_ws->request({
+        using => [
+            'urn:ietf:params:jmap:core',
+            'urn:ietf:params:jmap:contacts',
+        ],
+        methodCalls => [
+            ['ContactCard/set', { create => { c1 => {
+                '@type' => 'Card',
+                version => '1.0',
+                name => { full => "Test Card" },
+                uid => 'ae2640cc-234a-4dd9-95cc-3106258445b9',
+            }}}, "R1"],
+        ],
+        forwardedHeaders => { 'User-Agent' => $agent },
+    });
+    $res->assert_successful;
+
+    xlog $self, "the stored card message carries the forwarded User-Agent";
+    my $raw = $self->_fetch_dav_message($user, qr{#addressbooks.*Default}i);
+    $self->assert_matches(qr/^User-Agent:\s*\Q$agent\E\s*$/im, $raw);
+}
