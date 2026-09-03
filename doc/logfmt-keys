@@ -43,6 +43,7 @@ mbox.crcs.annot         annotation sync CRC
 mbox.crcs.basic         basic sync CRC
 mbox.crcs.header        the CRC of the cyrus.header file as read
 mbox.deletedmodseq      highest modseq of a deletion in this mailbox
+mbox.expunged           how many messages an expunge removed
 mbox.foldermodseq       the mailbox's folder modseq
 mbox.highestmodseq      the mailbox's highest modseq
 mbox.limit              which exists limit was hit: addressbook, calendar or mailbox
@@ -180,6 +181,7 @@ old.msg.imapuid         the message's IMAP uid before a move
 old.msg.sysflags        the message's system flags before the change
 old.search.createdmodseq  the createdmodseq the client last saw
 old.search.generation   the search index generation the client last saw
+old.sys.path            the path a file was copied or moved from
 
 ### usage counters
 
@@ -190,6 +192,7 @@ used.bytes.out          bytes written to the client this session
 
 error                   why the operation failed, as human-readable text
 sys.error               strerror() of errno at the point of logging
+sys.filename            a file name within a directory
 sys.path                a filesystem path
 sys.pid                 a process id
 
